@@ -29,11 +29,9 @@ public:
 class Graph {
     std::unordered_map<NodeId, std::shared_ptr<Node>> nodes;
     std::unordered_map<NodeId, std::vector<Edge>> forwardEdges;
-    NodeId rootNode = -1;
     NodeId outputNode = -1;
 
 public:
-    void setRoot(NodeId id) { rootNode = id; }
     void setOutput(NodeId id) { outputNode = id; }
 
     void addNode(NodeId id, std::function<std::any(const std::vector<std::any>&)> computeFunc) {
@@ -45,52 +43,52 @@ public:
         nodes[to]->inputFrom.push_back(from);
     }
 
-    void propagate(std::any input) {
-        if (rootNode == -1 || outputNode == -1) throw std::runtime_error("Root or output not set");
+    //void propagate(std::any input) {
+    //    if (rootNode == -1 || outputNode == -1) throw std::runtime_error("Root or output not set");
 
-        // Inject root input
-        nodes[rootNode]->value = input;
+    //    // Inject root input
+    //    nodes[rootNode]->value = input;
 
-        // Topological order processing (Kahn's algorithm variant)
-        std::unordered_map<NodeId, int> inDegree;
-        std::queue<NodeId> ready;
+    //    // Topological order processing (Kahn's algorithm variant)
+    //    std::unordered_map<NodeId, int> inDegree;
+    //    std::queue<NodeId> ready;
 
-        // Calculate in-degrees
-        for (auto& [id, node] : nodes) {
-            inDegree[id] = static_cast<int>(node->inputFrom.size());
-        }
+    //    // Calculate in-degrees
+    //    for (auto& [id, node] : nodes) {
+    //        inDegree[id] = static_cast<int>(node->inputFrom.size());
+    //    }
 
-        // Start from root
-        ready.push(rootNode);
+    //    // Start from root
+    //    ready.push(rootNode);
 
-        while (!ready.empty()) {
-            NodeId current = ready.front();
-            ready.pop();
+    //    while (!ready.empty()) {
+    //        NodeId current = ready.front();
+    //        ready.pop();
 
-            auto node = nodes[current];
-            if (current != rootNode) {
-                // Gather inputs
-                std::vector<std::any> inputs;
-                for (auto& from : node->inputFrom) {
-                    const auto& edges = forwardEdges[from];
-                    for (const auto& edge : edges) {
-                        if (edge.to == current) {
-                            inputs.push_back(edge.transform(nodes[from]->value));
-                        }
-                    }
-                }
-                node->value = node->compute(inputs);
-            }
+    //        auto node = nodes[current];
+    //        if (current != rootNode) {
+    //            // Gather inputs
+    //            std::vector<std::any> inputs;
+    //            for (auto& from : node->inputFrom) {
+    //                const auto& edges = forwardEdges[from];
+    //                for (const auto& edge : edges) {
+    //                    if (edge.to == current) {
+    //                        inputs.push_back(edge.transform(nodes[from]->value));
+    //                    }
+    //                }
+    //            }
+    //            node->value = node->compute(inputs);
+    //        }
 
-            // Push value to children
-            for (const auto& edge : forwardEdges[current]) {
-                inDegree[edge.to]--;
-                if (inDegree[edge.to] == 0) {
-                    ready.push(edge.to);
-                }
-            }
-        }
-    }
+    //        // Push value to children
+    //        for (const auto& edge : forwardEdges[current]) {
+    //            inDegree[edge.to]--;
+    //            if (inDegree[edge.to] == 0) {
+    //                ready.push(edge.to);
+    //            }
+    //        }
+    //    }
+    //}
 
     void propagateFrom(NodeId root, std::any input) {
         if (!nodes.count(root)) throw std::runtime_error("Root not found");
@@ -100,7 +98,7 @@ public:
         // In-degree count
         std::unordered_map<NodeId, int> inDegree;
         for (auto& [id, node] : nodes) {
-            inDegree[id] = node->inputFrom.size();
+            inDegree[id] = static_cast<int>(node->inputFrom.size());
         }
 
         std::queue<NodeId> ready;
@@ -168,6 +166,31 @@ struct BruttoData
     int bruttoWithExtra;
 };
 
+struct ComputeSkladka
+{
+    double operator()(const std::vector<std::any>& in)
+    {
+        int brutto = std::any_cast<int>(in[0]);
+        double procent = std::any_cast<double>(in[1]);
+        return brutto * procent;
+    }
+};
+
+template <typename TData>
+struct Const
+{
+    Const(const TData& data) : m_data{ data }
+    {}
+
+    double operator()(const std::vector<std::any>& in)
+    {
+        return m_data;
+    }
+
+private:
+    TData m_data;
+};
+
 int main() {
 
     //externale
@@ -207,21 +230,17 @@ int main() {
     g.addNode(6, [](const std::vector<std::any>& in) { // input/root do nastepnego regionu SkladkiZUS
         return in[0]; });
 
-    g.addNode(7, [](const std::vector<std::any>& in) { //wyliczenie sk³adki
-        int brutto = std::any_cast<int>(in[0]);
-        double procent = std::any_cast<double>(in[1]);
-        return brutto * procent;
-        });
+    //g.addNode(7, [](const std::vector<std::any>& in) { //wyliczenie sk³adki
+    //    int brutto = std::any_cast<int>(in[0]);
+    //    double procent = std::any_cast<double>(in[1]);
+    //    return brutto * procent;
+    //    });
 
-    g.addNode(8, [](const std::vector<std::any>& in) { //wyliczenie sk³adki
-        int brutto = std::any_cast<int>(in[0]);
-        double procent = std::any_cast<double>(in[1]);
-        return brutto * procent;
-        });
+    g.addNode(7, ComputeSkladka{});
 
-    g.addNode(9, [&](const std::vector<std::any>&) { //pobranie procentu emerytalnej
-        return procent_emerytalnej;
-        });
+    g.addNode(8, ComputeSkladka{});
+
+    g.addNode(9, Const{procent_emerytalnej});
 
     g.addNode(10, [&](const std::vector<std::any>&) { //pobranie procentu emerytalnej
         return procent_rentowej;
@@ -231,7 +250,7 @@ int main() {
         auto emerytalna = std::any_cast<double>(in[0]);
         auto rentowa = std::any_cast<double>(in[1]);
         return std::string("emerytalna = ") + std::to_string(emerytalna) 
-             + std::string(", rentowa = ") + std::to_string(rentowa);
+             + std::string("\nrentowa = ") + std::to_string(rentowa);
         });
 
     g.addEdge(1, 2, [](const std::any& v) { return v; });  
