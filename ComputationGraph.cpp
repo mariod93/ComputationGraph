@@ -10,11 +10,41 @@
 #include <string>
 #include <numeric>
 
+#include <catch2\catch_all.hpp>
+
 using NodeId = int;
 
-struct Edge {
+enum class NodeType
+{
+    None,
+    Node6,
+    Node7
+};
+
+struct IEdge
+{
+    virtual NodeId getDestination() const = 0;
+    virtual std::any translate(const std::any&) = 0;
+};
+
+struct Edge : public IEdge {
     NodeId to;
     std::function<std::any(const std::any&)> transform;
+
+    Edge(NodeId _to, std::function<std::any(const std::any&)> _transform)
+        : to{ _to }
+        , transform{ _transform }
+    {}
+
+    NodeId getDestination() const override
+    {
+        return to;
+    }
+
+    std::any translate(const std::any& v)
+    {
+        return transform(v);
+    }
 };
 
 class Node {
@@ -22,26 +52,42 @@ public:
     std::function<std::any(const std::vector<std::any>&)> compute;
     std::vector<NodeId> inputFrom;
     std::any value;
+    NodeType type{ NodeType::None };
 
-    Node(std::function<std::any(const std::vector<std::any>&)> func) : compute(func) {}
+    Node(std::function<std::any(const std::vector<std::any>&)> func, NodeType t) 
+        : compute(func) 
+        , type { t }
+    {}
 };
 
 class Graph {
     std::unordered_map<NodeId, std::shared_ptr<Node>> nodes;
-    std::unordered_map<NodeId, std::vector<Edge>> forwardEdges;
+    std::unordered_map<NodeId, std::vector<std::shared_ptr<IEdge>>> forwardEdges;
     NodeId outputNode = -1;
 
 public:
     void setOutput(NodeId id) { outputNode = id; }
 
-    void addNode(NodeId id, std::function<std::any(const std::vector<std::any>&)> computeFunc) {
-        nodes[id] = std::make_shared<Node>(computeFunc);
+    void addNode(
+        NodeId id, 
+        std::function<std::any(const std::vector<std::any>&)> computeFunc) 
+    {
+        nodes[id] = std::make_shared<Node>(computeFunc, NodeType::None);
+    }
+
+    void addNode(
+        NodeId id, NodeType t,
+        std::function<std::any(const std::vector<std::any>&)> computeFunc
+        )
+    {
+        nodes[id] = std::make_shared<Node>(computeFunc, t);
     }
 
     void addEdge(NodeId from, NodeId to, std::function<std::any(const std::any&)> transform) {
-        forwardEdges[from].push_back({ to, transform });
+        forwardEdges[from].push_back(std::make_shared<Edge>( to, transform ));
         nodes[to]->inputFrom.push_back(from);
     }
+
 
     //void propagate(std::any input) {
     //    if (rootNode == -1 || outputNode == -1) throw std::runtime_error("Root or output not set");
@@ -130,8 +176,8 @@ public:
                     // Find transform function from edge
                     auto& edges = forwardEdges[from];
                     for (auto& edge : edges) {
-                        if (edge.to == current) {
-                            inputs.push_back(edge.transform(nodes[from]->value));
+                        if (edge->getDestination() == current) {
+                            inputs.push_back(edge->translate(nodes[from]->value));
                             break;
                         }
                     }
@@ -143,13 +189,16 @@ public:
             if (!allReady) continue;
 
             if (!node->value.has_value())
-            node->value = node->compute(inputs);
+            {
+                node->value = node->compute(inputs);
+                std::cout << "after compute node: " << current << "\n";
+            }
 
             // Push forward
             for (const auto& edge : forwardEdges[current]) {
-                inDegree[edge.to]--;
-                if (inDegree[edge.to] == 0) {
-                    ready.push(edge.to);
+                inDegree[edge->getDestination()]--;
+                if (inDegree[edge->getDestination()] == 0) {
+                    ready.push(edge->getDestination());
                 }
             }
         }
@@ -201,8 +250,8 @@ struct Identity
     }
 };
 
-int main() {
-
+TEST_CASE("Computational graph example")
+{
     //externale
     constexpr double procent_emerytalnej = 0.2;
     constexpr double procent_rentowej = 0.5;
@@ -225,7 +274,6 @@ int main() {
         return brutto > 100; });
 
     g.addNode(4, [](const std::vector<std::any>& in) { // node wynikowy z regionu Brutto
-        constexpr int limit = 69;
         int brutto = std::any_cast<int>(in[0]);
         int bruttoWithExtra = std::any_cast<int>(in[1]);
         bool overlimit = std::any_cast<bool>(in[2]);
@@ -239,16 +287,11 @@ int main() {
     g.addNode(5, [&components](const std::vector<std::any>&) { // suma extra sk³adnikow
         return std::accumulate(components.begin(), components.end(), 0); });
 
-    g.addNode(6, [](const std::vector<std::any>& in) { // input/root do nastepnego regionu SkladkiZUS
-        return in[0]; });
+    g.addNode(6, NodeType::Node6, [](const std::vector<std::any>& in) { // input/root do nastepnego regionu SkladkiZUS
+        return in[0]; }
+        );
 
-    //g.addNode(7, [](const std::vector<std::any>& in) { //wyliczenie sk³adki
-    //    int brutto = std::any_cast<int>(in[0]);
-    //    double procent = std::any_cast<double>(in[1]);
-    //    return brutto * procent;
-    //    });
-
-    g.addNode(7, ComputeSkladka{});
+    g.addNode(7, NodeType::Node7, ComputeSkladka{});
 
     g.addNode(8, ComputeSkladka{});
 
@@ -284,7 +327,8 @@ int main() {
 
     g.addEdge(6, 8, [](const std::any& v) { 
         BruttoData data = std::any_cast<BruttoData>(v);
-        return data.bruttoWithExtra; });
+        return data.bruttoWithExtra; 
+        });
 
     g.addEdge(7, 11, Identity{});
 
@@ -297,7 +341,6 @@ int main() {
     g.setOutput(11);
     g.propagateFrom(1, 100);
 
-    std::cout << std::any_cast<std::string>(g.getOutput()) << "\n";
 
-    return 0;
+   std::cout << std::any_cast<std::string>(g.getOutput()) << "\n";
 }
