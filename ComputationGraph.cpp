@@ -166,6 +166,7 @@ struct BruttoData
     int bruttoWithExtra;
 };
 
+// Node operations
 struct ComputeSkladka
 {
     double operator()(const std::vector<std::any>& in)
@@ -191,6 +192,15 @@ private:
     TData m_data;
 };
 
+//Edge transformations
+struct Identity
+{
+    std::any operator()(const std::any& v) 
+    {
+        return v;
+    }
+};
+
 int main() {
 
     //externale
@@ -200,6 +210,8 @@ int main() {
 
     Graph g;
 
+
+    //Dodawanie nodeów do grafu
     g.addNode(1, [](const std::vector<std::any>& in) { //brutto
         return in[0]; });
 
@@ -253,16 +265,18 @@ int main() {
              + std::string("\nrentowa = ") + std::to_string(rentowa);
         });
 
-    g.addEdge(1, 2, [](const std::any& v) { return v; });  
-    g.addEdge(1, 3, [](const std::any& v) { return v; });  
-    g.addEdge(1, 4, [](const std::any& v) { return v; });
 
-    g.addEdge(2, 4, [](const std::any& v) { return v; });
+    //Ustalanie po³¹czeñ pomiêdzy grafami
+    g.addEdge(1, 2, Identity{});
+    g.addEdge(1, 3, Identity{});  
+    g.addEdge(1, 4, Identity{});
 
-    g.addEdge(3, 4, [](const std::any& v) { return v; });
-    g.addEdge(4, 6, [](const std::any& v) { return v; });
+    g.addEdge(2, 4, Identity{});
 
-    g.addEdge(5, 2, [](const std::any& v) { return v; });
+    g.addEdge(3, 4, Identity{});
+    g.addEdge(4, 6, Identity{});
+
+    g.addEdge(5, 2, Identity{});
 
     g.addEdge(6, 7, [](const std::any& v) { 
         BruttoData data = std::any_cast<BruttoData>(v);
@@ -272,16 +286,16 @@ int main() {
         BruttoData data = std::any_cast<BruttoData>(v);
         return data.bruttoWithExtra; });
 
-    g.addEdge(7, 11, [](const std::any& v) { return v; });
+    g.addEdge(7, 11, Identity{});
 
-    g.addEdge(8, 11, [](const std::any& v) { return v; });
+    g.addEdge(8, 11, Identity{});
     
-    g.addEdge(9, 7, [](const std::any& v) { return v; });
+    g.addEdge(9, 7, Identity{});
 
-    g.addEdge(10, 8, [](const std::any& v) { return v; });
+    g.addEdge(10, 8, Identity{});
 
     g.setOutput(11);
-    g.propagateFrom(1, 100);  // root = 5
+    g.propagateFrom(1, 100);
 
     std::cout << std::any_cast<std::string>(g.getOutput()) << "\n";
 
